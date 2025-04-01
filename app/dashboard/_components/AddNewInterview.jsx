@@ -162,11 +162,21 @@ function AddNewInterview({ open, setOpen }) {
       
       FORMAT EACH QUESTION AS:
       Question #: [The interview question]
-      Purpose: [Brief explanation of what this question aims to assess]
       Strong Answer Elements: [3-5 bullet points describing elements of a good response]
       
       
-      Ensure questions are challenging but fair, and directly relevant to both the job requirements and the candidate's experience level. Focus on questions that would be asked in a real interview setting.In the response only give the questions, answers and other asked information, don't give any other filler, like pre text or a summary or anything, not even a heading like Generated Questions. I want the response in a json format, I want the question and answer as son field.`,
+      Ensure questions are challenging but fair, and directly relevant to both the job requirements and the candidate's experience level. Focus on questions that would be asked in a real interview setting.In the response only give the questions, answers and other asked information, don't give any other filler, like pre text or a summary or anything, not even a heading like Generated Questions. I want the response in a json format, I want the question and answer as son field.
+      Keep the response of this format:
+      [
+      {
+        "question": "Question #1",
+        "answer": "Answer #1",
+        },
+        "question": "Question #2",
+        "answer": "Answer #2",
+        },
+        ]
+      `,
     ];
 
     const result = await chatSession.sendMessage(InputPrompt);

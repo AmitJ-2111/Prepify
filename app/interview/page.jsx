@@ -1,3 +1,5 @@
+// app/interview/page.jsx
+
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -28,15 +30,15 @@ import {
 
 export default function InterviewPage() {
   const router = useRouter();
-  // const searchParams = useSearchParams();
+  const searchParams = useSearchParams();
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const speechRecognitionRef = useRef(null);
 
-  // // Get interview parameters from URL query params
-  // const jobPosition = searchParams.get("jobPosition") || "";
-  // const jobExperience = searchParams.get("jobExperience") || "";
-  // const numQuestions = parseInt(searchParams.get("numQuestions") || "5", 10);
+  // Get interview parameters from URL query params
+  const jobPosition = searchParams.get("jobPosition") || "";
+  const jobExperience = searchParams.get("jobExperience") || "";
+  const numQuestions = parseInt(searchParams.get("numQuestions") || "5", 10);
 
   // Interview state
   const [interviewState, setInterviewState] = useState("prep"); // prep, instructions, active, completed, summary, report
@@ -85,8 +87,7 @@ export default function InterviewPage() {
   // Initialize questions when moving to active state
   useEffect(() => {
     if (interviewState === "active" && questions.length === 0) {
-      // For now, use mock questions until Gemini API is set up
-      setMockQuestions();
+      fetchQuestions();
     }
   }, [interviewState]);
 
@@ -105,6 +106,117 @@ export default function InterviewPage() {
 
     return () => clearInterval(interval);
   }, [interviewState, isRecording, timeRemaining]);
+
+  // Fetch questions from the Gemini API
+  const fetchQuestions = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobPosition,
+          jobDescription: localStorage.getItem("jobDescription") || "",
+          resumeText: localStorage.getItem("resumeText") || "",
+          experience: jobExperience,
+          numQuestions,
+          requestType: "generateQuestions",
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate interview questions");
+      }
+
+      const data = await response.json();
+      setQuestions(data.data || []);
+      setAnswers(new Array(data.data?.length || 0).fill(""));
+    } catch (err) {
+      console.error("Error fetching questions:", err);
+      setError("Failed to generate interview questions.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Set mock questions for testing or fallback
+  const setMockQuestions = () => {
+    const mockQuestions = [
+      {
+        question: `Tell me about your experience as a ${jobPosition}.`,
+        skillTested: "Professional Background",
+        idealAnswerElements: [
+          "Highlight relevant projects",
+          "Mention specific technologies used",
+          "Quantify achievements with metrics",
+          "Show progression in responsibilities",
+        ],
+      },
+      {
+        question:
+          "Describe a challenging problem you solved in a previous role.",
+        skillTested: "Problem Solving",
+        idealAnswerElements: [
+          "Clearly define the problem",
+          "Explain your approach and methodology",
+          "Describe the solution implemented",
+          "Share the impact or results",
+        ],
+      },
+      {
+        question: "How do you handle tight deadlines and pressure?",
+        skillTested: "Stress Management",
+        idealAnswerElements: [
+          "Provide a specific example",
+          "Show prioritization skills",
+          "Demonstrate communication approach",
+          "Explain how you maintained quality",
+        ],
+      },
+      {
+        question: "Describe your approach to learning new technologies.",
+        skillTested: "Adaptability & Learning",
+        idealAnswerElements: [
+          "Show enthusiasm for continuous learning",
+          "Mention specific learning methods",
+          "Give example of quickly mastering a new skill",
+          "Explain how you apply new knowledge",
+        ],
+      },
+      {
+        question: "Where do you see yourself professionally in 5 years?",
+        skillTested: "Career Planning",
+        idealAnswerElements: [
+          "Show ambition balanced with realism",
+          "Align answer with the company/role trajectory",
+          "Demonstrate commitment to growth",
+          "Express specific goals and milestones",
+        ],
+      },
+      {
+        question: "How do you handle disagreements with team members?",
+        skillTested: "Conflict Resolution",
+        idealAnswerElements: [
+          "Emphasize respectful communication",
+          "Show willingness to understand other perspectives",
+          "Describe a systematic approach to resolution",
+          "Provide a concrete example",
+        ],
+      },
+    ];
+
+    setQuestions(mockQuestions.slice(0, numQuestions));
+    setAnswers(
+      new Array(Math.min(mockQuestions.length, numQuestions)).fill("")
+    );
+
+    // Mock summary
+    setSummary(
+      `Based on your profile, you have ${jobExperience} years of experience in ${jobPosition} roles, with a focus on software development and team collaboration. Your background shows progressive responsibility and technical proficiency which aligns well with the requirements for this position.`
+    );
+  };
 
   // Request camera and microphone permissions
   const initializeMedia = async () => {
@@ -151,7 +263,7 @@ export default function InterviewPage() {
       });
 
       // Get feedback on the answer
-      getMockFeedback();
+      getFeedback();
     } else {
       // Start recording
       startSpeechRecognition();
@@ -205,7 +317,171 @@ export default function InterviewPage() {
     }
   };
 
-  // Get mock feedback for testing without API
+  // Get AI feedback on the current answer
+  const getFeedback = async () => {
+    if (!currentAnswer.trim()) return;
+
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentQuestion: questions[currentQuestionIndex]?.question,
+          userResponse: currentAnswer,
+          jobPosition,
+          requestType: "evaluateAnswer",
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to get feedback");
+      }
+
+      const data = await response.json();
+      setFeedback(data.data);
+      setAllFeedback((prev) => {
+        const newFeedback = [...prev];
+        newFeedback[currentQuestionIndex] = data.data;
+        return newFeedback;
+      });
+    } catch (err) {
+      console.error("Error getting feedback:", err);
+      setError("Failed to analyze your answer.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fallback mock feedback for testing without API
+  const getMockFeedback = () => {
+    if (!currentAnswer.trim()) return;
+
+    setLoading(true);
+
+    // Generate random score between 6-9
+    const randomScore = Math.floor(Math.random() * 4) + 6;
+
+    // Simulate API delay
+    setTimeout(() => {
+      const mockFeedback = {
+        overallRating: randomScore,
+        strengths: [
+          "Good structure to your answer",
+          "Provided concrete examples",
+          "Demonstrated relevant technical knowledge",
+        ],
+        areasForImprovement: [
+          "Could be more concise in certain areas",
+          "Consider quantifying your achievements more",
+        ],
+        specificAdvice:
+          "Try using the STAR method (Situation, Task, Action, Result) more explicitly in your responses to showcase your problem-solving approach and impact.",
+      };
+
+      setFeedback(mockFeedback);
+
+      // Add to all feedback for final report
+      setAllFeedback((prev) => {
+        const newFeedback = [...prev];
+        newFeedback[currentQuestionIndex] = mockFeedback;
+        return newFeedback;
+      });
+
+      setLoading(false);
+    }, 1500);
+  };
+
+  // Save interview data to the database
+  const saveInterviewData = async () => {
+    try {
+      setLoading(true);
+
+      // Prepare data to submit
+      const interviewData = {
+        jobPosition,
+        jobDescription: localStorage.getItem("jobDescription") || "",
+        jobExperience,
+        questions,
+        answers,
+        feedback: allFeedback,
+      };
+
+      // Call our API endpoint
+      const response = await fetch("/api/interviews", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(interviewData),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save interview");
+      }
+
+      const result = await response.json();
+      console.log("Interview saved with ID:", result.mockId);
+
+      // Optional: Store the mockId in localStorage for redirection or reference
+      localStorage.setItem("lastInterviewId", result.mockId);
+    } catch (err) {
+      console.error("Error saving interview:", err);
+      setError("Failed to save interview results. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Move to the next question
+  const handleNextQuestion = () => {
+    // Save the current answer first
+    setAnswers((prev) => {
+      const newAnswers = [...prev];
+      newAnswers[currentQuestionIndex] = currentAnswer;
+      return newAnswers;
+    });
+
+    // If there's no feedback (user skipped without recording), generate feedback
+    if (!allFeedback[currentQuestionIndex] && currentAnswer.trim()) {
+      getFeedback();
+    }
+
+    // Stop recording if active
+    if (isRecording) {
+      if (speechRecognitionRef.current) {
+        speechRecognitionRef.current.stop();
+      }
+      setIsRecording(false);
+    }
+
+    // Clear current answer and feedback
+    setCurrentAnswer("");
+    setFeedback(null);
+
+    // Move to next question or end interview
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
+      setTimeRemaining(120); // Reset timer
+    } else {
+      // End of interview - calculate overall score
+      const scores = allFeedback
+        .filter((f) => f)
+        .map((f) => parseInt(f.overallRating));
+      const avgScore =
+        scores.length > 0
+          ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+          : 7;
+      setOverallScore(avgScore);
+
+      // Save the interview data to the database
+      saveInterviewData();
+
+      // End of interview
+      setInterviewState("completed");
+    }
+  };
 
   // Format seconds into MM:SS format
   const formatTime = (seconds) => {
@@ -229,7 +505,7 @@ export default function InterviewPage() {
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="text-xl font-semibold">Interview for jobPostion</h1>
+          <h1 className="text-xl font-semibold">Interview for {jobPosition}</h1>
 
           {interviewState === "active" && (
             <div className="ml-auto flex items-center space-x-2">
@@ -281,7 +557,7 @@ export default function InterviewPage() {
                 <p className="mb-6 text-lg">
                   You're about to start an AI-powered interview practice session
                   for the position of{" "}
-                  <span className="font-semibold">jobPostion</span>.
+                  <span className="font-semibold">{jobPosition}</span>.
                 </p>
 
                 <div className="bg-slate-50 p-6 rounded-lg mb-6">
@@ -290,15 +566,16 @@ export default function InterviewPage() {
                   </h3>
                   <ul className="space-y-2">
                     <li>
-                      <span className="font-medium">Position:</span> jobPostion
+                      <span className="font-medium">Position:</span>{" "}
+                      {jobPosition}
                     </li>
                     <li>
                       <span className="font-medium">Experience Level:</span>{" "}
-                      jobExperience years
+                      {jobExperience} years
                     </li>
                     <li>
                       <span className="font-medium">Number of Questions:</span>{" "}
-                      numQuestions
+                      {numQuestions}
                     </li>
                   </ul>
                 </div>
@@ -338,8 +615,8 @@ export default function InterviewPage() {
                     <div>
                       <p className="font-medium">Allow enough time</p>
                       <p className="text-muted-foreground">
-                        You'll need about time minutes to complete this
-                        interview.
+                        You'll need about {numQuestions * 5} minutes to complete
+                        this interview.
                       </p>
                     </div>
                   </div>
@@ -382,17 +659,17 @@ export default function InterviewPage() {
                     <div className="space-y-2">
                       <p>
                         <span className="font-medium">Position:</span>{" "}
-                        jobPostion
+                        {jobPosition}
                       </p>
                       <p>
                         <span className="font-medium">Experience Level:</span>{" "}
-                        jobExperience years
+                        {jobExperience} years
                       </p>
                       <p>
                         <span className="font-medium">
                           Number of Questions:
                         </span>{" "}
-                        numQuestions
+                        {numQuestions}
                       </p>
                       {summary && (
                         <div className="mt-4 p-4 bg-white rounded-lg">
@@ -731,8 +1008,8 @@ export default function InterviewPage() {
                   </div>
                   <h2 className="text-2xl font-bold mb-2">Great job!</h2>
                   <p className="text-muted-foreground">
-                    You've completed your practice interview for the jobPostion
-                    position.
+                    You've completed your practice interview for the{" "}
+                    {jobPosition} position.
                   </p>
                 </div>
 
@@ -777,7 +1054,7 @@ export default function InterviewPage() {
                 <div>
                   <CardTitle>Interview Report</CardTitle>
                   <CardDescription>
-                    jobPostion • {new Date().toLocaleDateString()}
+                    {jobPosition} • {new Date().toLocaleDateString()}
                   </CardDescription>
                 </div>
                 <div className="flex items-center justify-center rounded-full w-16 h-16 bg-slate-50">
@@ -788,8 +1065,8 @@ export default function InterviewPage() {
                 <div className="space-y-2 mb-6">
                   <h3 className="font-medium">Interview Overview</h3>
                   <p className="text-sm text-muted-foreground">
-                    You completed a numQuestions-question interview for the{" "}
-                    jobPostion position. Based on your responses, here is a
+                    You completed a {numQuestions}-question interview for the{" "}
+                    {jobPosition} position. Based on your responses, here is a
                     summary of your performance.
                   </p>
                 </div>
