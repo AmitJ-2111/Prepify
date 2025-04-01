@@ -1,3 +1,4 @@
+// app/dashboard/page.jsx - Updated with real data
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -19,56 +20,34 @@ import { Sidebar, SidebarContent, SidebarRail } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { InterviewStatsCard } from "./_components/InterviewStatsCard";
 import AddNewInterview from "./_components/AddNewInterview";
-import UploadPDF from "./_components/PDF";
-
-// Mock data for the dashboard
-const mockInterviewHistory = [
-  {
-    id: "int-1",
-    position: "Senior Software Engineer",
-    company: "Tech Solutions Inc.",
-    date: "2025-02-22",
-    duration: "28 min",
-    score: 85,
-    questions: 8,
-    status: "completed",
-  },
-  {
-    id: "int-2",
-    position: "Product Manager",
-    company: "Innovate Co.",
-    date: "2025-02-19",
-    duration: "35 min",
-    score: 78,
-    questions: 10,
-    status: "completed",
-  },
-  {
-    id: "int-3",
-    position: "Full Stack Developer",
-    company: "Digital Craft",
-    date: "2025-02-14",
-    duration: "22 min",
-    score: 92,
-    questions: 6,
-    status: "completed",
-  },
-];
-
-const mockSkillAssessment = {
-  communication: 82,
-  technicalKnowledge: 88,
-  problemSolving: 76,
-  leadership: 73,
-  teamwork: 85,
-};
+import Loading from "@/components/ui/loading";
+import { db } from "utils/db";
+import { MockInterview, UserAnswer } from "utils/schema";
+import { eq, desc } from "drizzle-orm";
 
 export default function Dashboard() {
   const router = useRouter();
   const { user, isLoaded } = useUser();
   const [greeting, setGreeting] = useState("Hello");
   const [activeSection, setActiveSection] = useState("overview");
-  const [newInterviewOpen, setNewInterviewOpen] = useState(false); // New state for dialog control
+  const [newInterviewOpen, setNewInterviewOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // States for real data
+  const [interviewHistory, setInterviewHistory] = useState([]);
+  const [skillAssessment, setSkillAssessment] = useState({
+    communication: 0,
+    technicalKnowledge: 0,
+    problemSolving: 0,
+    leadership: 0,
+    teamwork: 0,
+  });
+  const [recentInterview, setRecentInterview] = useState(null);
+  const [interviewStats, setInterviewStats] = useState({
+    totalSessions: 0,
+    practiceTime: 0,
+    averageScore: 0,
+  });
 
   // Set appropriate greeting based on time of day
   useEffect(() => {
@@ -78,15 +57,173 @@ export default function Dashboard() {
     else setGreeting("Good evening");
   }, []);
 
+  // Fetch user's interview data
+  useEffect(() => {
+    if (isLoaded && user) {
+      fetchUserData();
+    }
+  }, [isLoaded, user]);
+
+  // Fetch user data from database
+  const fetchUserData = async () => {
+    setLoading(true);
+    try {
+      // Fetch user's interview history
+      const userEmail = user?.primaryEmailAddress?.emailAddress;
+
+      // Using the same pattern as in your interview pages
+      const interviews = await db
+        .select()
+        .from(MockInterview)
+        .where(eq(MockInterview.createdBy, userEmail))
+        .orderBy(desc(MockInterview.createdAt));
+
+      if (interviews.length > 0) {
+        setInterviewHistory(interviews);
+        setRecentInterview(interviews[0]);
+
+        // Fetch answers for statistics calculation
+        const answers = await db
+          .select()
+          .from(UserAnswer)
+          .where(eq(UserAnswer.userEmail, userEmail));
+
+        // Calculate stats
+        calculateInterviewStats(interviews, answers);
+        calculateSkillAssessment(answers);
+      }
+    } catch (error) {
+      console.error("Error fetching user data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Calculate interview statistics
+  const calculateInterviewStats = (interviews, answers) => {
+    // Total sessions
+    const totalSessions = interviews.length;
+
+    // Practice time (estimated based on number of questions and answers)
+    // Assuming each question takes about 3 minutes on average
+    const totalQuestions = answers.length;
+    const practiceTime = totalQuestions * 3;
+
+    // Average score based on ratings in answers
+    let totalScore = 0;
+    let ratedAnswers = 0;
+
+    answers.forEach((answer) => {
+      if (answer.rating) {
+        totalScore += parseInt(answer.rating);
+        ratedAnswers++;
+      }
+    });
+
+    const averageScore =
+      ratedAnswers > 0 ? Math.round((totalScore / ratedAnswers) * 20) : 0;
+
+    setInterviewStats({
+      totalSessions,
+      practiceTime,
+      averageScore,
+    });
+  };
+
+  // Calculate skill assessment based on user answers
+  const calculateSkillAssessment = (answers) => {
+    // This would ideally be done with Gemini AI for real analysis
+    // For now, we'll do a basic estimation based on answer ratings
+
+    // Initialize skill scores
+    const skills = {
+      communication: 0,
+      technicalKnowledge: 0,
+      problemSolving: 0,
+      leadership: 0,
+      teamwork: 0,
+    };
+
+    // Count ratings by category
+    const skillCounts = { ...skills };
+
+    // Analyze answers - in a real implementation, this would use
+    // more sophisticated NLP or come from Gemini's analysis
+    answers.forEach((answer) => {
+      if (!answer.rating) return;
+
+      const rating = parseInt(answer.rating);
+      const question = answer.question.toLowerCase();
+
+      // Basic keyword matching to categorize questions
+      if (
+        question.includes("explain") ||
+        question.includes("describe") ||
+        question.includes("tell me")
+      ) {
+        skills.communication += rating;
+        skillCounts.communication++;
+      }
+
+      if (
+        question.includes("technical") ||
+        question.includes("skill") ||
+        question.includes("experience with")
+      ) {
+        skills.technicalKnowledge += rating;
+        skillCounts.technicalKnowledge++;
+      }
+
+      if (
+        question.includes("problem") ||
+        question.includes("challenge") ||
+        question.includes("difficult")
+      ) {
+        skills.problemSolving += rating;
+        skillCounts.problemSolving++;
+      }
+
+      if (
+        question.includes("lead") ||
+        question.includes("manage") ||
+        question.includes("team")
+      ) {
+        skills.leadership += rating;
+        skillCounts.leadership++;
+      }
+
+      if (
+        question.includes("collaborate") ||
+        question.includes("team") ||
+        question.includes("work with")
+      ) {
+        skills.teamwork += rating;
+        skillCounts.teamwork++;
+      }
+    });
+
+    // Calculate average for each skill
+    Object.keys(skills).forEach((skill) => {
+      if (skillCounts[skill] > 0) {
+        skills[skill] = Math.round((skills[skill] / skillCounts[skill]) * 20);
+      } else {
+        // If no questions matched this skill, use the overall average
+        skills[skill] = interviewStats.averageScore;
+      }
+    });
+
+    setSkillAssessment(skills);
+  };
+
   // Format date for display
   const formatDate = (dateString) => {
     const options = { month: "short", day: "numeric", year: "numeric" };
     return new Date(dateString).toLocaleDateString("en-US", options);
   };
 
-  // Function to calculate overall performance score
+  // Calculate overall performance score
   const calculateOverallScore = () => {
-    const skillValues = Object.values(mockSkillAssessment);
+    const skillValues = Object.values(skillAssessment);
     return Math.round(
       skillValues.reduce((a, b) => a + b, 0) / skillValues.length
     );
@@ -94,7 +231,7 @@ export default function Dashboard() {
 
   // Generate a quick tip based on the user's weakest skill
   const generateQuickTip = () => {
-    const weakestSkill = Object.entries(mockSkillAssessment).sort(
+    const weakestSkill = Object.entries(skillAssessment).sort(
       ([, a], [, b]) => a - b
     )[0];
 
@@ -114,12 +251,13 @@ export default function Dashboard() {
     }
   };
 
-  if (!isLoaded) return null;
+  if (!isLoaded) return <Loading />;
+
+  if (loading) return <Loading />;
 
   return (
     <div className="flex h-[calc(100vh-4rem)]">
       {/* Sidebar with sliding functionality */}
-
       <Sidebar>
         <SidebarContent>
           <AppSidebar />
@@ -153,7 +291,7 @@ export default function Dashboard() {
               Interview History
             </Button>
             <Button
-              onClick={() => setNewInterviewOpen(true)} // Direct state control
+              onClick={() => setNewInterviewOpen(true)}
               className="ml-2 gap-2"
             >
               <Plus className="h-4 w-4" />
@@ -177,7 +315,7 @@ export default function Dashboard() {
                   </div>
                   <div className="mt-3 flex items-baseline gap-1">
                     <span className="text-3xl font-bold">
-                      {mockInterviewHistory.length}
+                      {interviewStats.totalSessions}
                     </span>
                     <span className="text-sm text-muted-foreground">
                       interviews
@@ -195,7 +333,9 @@ export default function Dashboard() {
                     </h3>
                   </div>
                   <div className="mt-3 flex items-baseline gap-1">
-                    <span className="text-3xl font-bold">85</span>
+                    <span className="text-3xl font-bold">
+                      {interviewStats.practiceTime}
+                    </span>
                     <span className="text-sm text-muted-foreground">
                       minutes
                     </span>
@@ -213,7 +353,7 @@ export default function Dashboard() {
                   </div>
                   <div className="mt-3 flex items-baseline gap-1">
                     <span className="text-3xl font-bold">
-                      {calculateOverallScore()}
+                      {interviewStats.averageScore}
                     </span>
                     <span className="text-sm text-muted-foreground">/ 100</span>
                   </div>
@@ -230,48 +370,76 @@ export default function Dashboard() {
                   <CardHeader>
                     <div className="flex justify-between items-center">
                       <CardTitle>Resume Your Preparation</CardTitle>
-                      <Button size="sm" variant="ghost">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setActiveSection("history")}
+                      >
                         View all
                       </Button>
                     </div>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      <div className="rounded-lg border p-4 hover:bg-muted/50 transition-colors cursor-pointer">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="font-medium">
-                              Senior Software Engineer
-                            </h3>
-                            <p className="text-sm text-muted-foreground">
-                              Tech Solutions Inc.
-                            </p>
+                      {recentInterview ? (
+                        <div className="rounded-lg border p-4 hover:bg-muted/50 transition-colors cursor-pointer">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h3 className="font-medium">
+                                {recentInterview.jobPosition}
+                              </h3>
+                              <p className="text-sm text-muted-foreground">
+                                Created on{" "}
+                                {formatDate(recentInterview.createdAt)}
+                              </p>
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() =>
+                                router.push(
+                                  `/interview/${recentInterview.mockId}`
+                                )
+                              }
+                            >
+                              <Play className="h-4 w-4 mr-1" /> Continue
+                            </Button>
                           </div>
-                          <Button size="sm">
-                            <Play className="h-4 w-4 mr-1" /> Continue
-                          </Button>
+                          <div className="mt-3 grid grid-cols-3 gap-2">
+                            <div className="flex flex-col">
+                              <span className="text-xs text-muted-foreground">
+                                Experience
+                              </span>
+                              <span className="text-sm">
+                                {recentInterview.jobExperience} years
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-xs text-muted-foreground">
+                                Questions
+                              </span>
+                              <span className="text-sm">
+                                {
+                                  JSON.parse(recentInterview.jsonMockResp)
+                                    .length
+                                }{" "}
+                                total
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-xs text-muted-foreground">
+                                Progress
+                              </span>
+                              <span className="text-sm">In progress</span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="mt-3 grid grid-cols-3 gap-2">
-                          <div className="flex flex-col">
-                            <span className="text-xs text-muted-foreground">
-                              Last session
-                            </span>
-                            <span className="text-sm">Feb 22, 2025</span>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-xs text-muted-foreground">
-                              Questions
-                            </span>
-                            <span className="text-sm">8 total</span>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-xs text-muted-foreground">
-                              Score
-                            </span>
-                            <span className="text-sm">85/100</span>
-                          </div>
+                      ) : (
+                        <div className="text-center p-4 bg-muted/30 rounded-lg">
+                          <p className="text-muted-foreground">
+                            No interviews found. Start your first interview!
+                          </p>
                         </div>
-                      </div>
+                      )}
 
                       <div
                         className="rounded-lg border p-4 bg-muted/30 cursor-pointer"
@@ -302,26 +470,24 @@ export default function Dashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      {Object.entries(mockSkillAssessment).map(
-                        ([skill, score]) => (
-                          <div key={skill} className="space-y-1">
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm capitalize">
-                                {skill.replace(/([A-Z])/g, " $1").trim()}
-                              </span>
-                              <span className="text-sm font-medium">
-                                {score}%
-                              </span>
-                            </div>
-                            <div className="h-2 rounded-full bg-muted overflow-hidden">
-                              <div
-                                className="h-full bg-primary"
-                                style={{ width: `${score}%` }}
-                              ></div>
-                            </div>
+                      {Object.entries(skillAssessment).map(([skill, score]) => (
+                        <div key={skill} className="space-y-1">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm capitalize">
+                              {skill.replace(/([A-Z])/g, " $1").trim()}
+                            </span>
+                            <span className="text-sm font-medium">
+                              {score}%
+                            </span>
                           </div>
-                        )
-                      )}
+                          <div className="h-2 rounded-full bg-muted overflow-hidden">
+                            <div
+                              className="h-full bg-primary"
+                              style={{ width: `${score}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </CardContent>
                 </Card>
@@ -357,15 +523,17 @@ export default function Dashboard() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 text-sm">
-                        <div className="bg-green-100 text-green-700 rounded-full px-2 py-0.5 flex items-center">
-                          <Flame className="h-3 w-3 mr-1" />
-                          <span className="font-medium">+5 pts</span>
+                      {interviewHistory.length > 1 && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <div className="bg-green-100 text-green-700 rounded-full px-2 py-0.5 flex items-center">
+                            <Flame className="h-3 w-3 mr-1" />
+                            <span className="font-medium">+5 pts</span>
+                          </div>
+                          <span className="text-muted-foreground">
+                            from last session
+                          </span>
                         </div>
-                        <span className="text-muted-foreground">
-                          from last session
-                        </span>
-                      </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -402,50 +570,90 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {mockInterviewHistory.map((interview) => (
-                    <div
-                      key={interview.id}
-                      className="rounded-lg border p-4 hover:bg-muted/50 transition-colors cursor-pointer"
-                      onClick={() =>
-                        router.push(`/interview/review/${interview.id}`)
-                      }
-                    >
-                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                        <div>
-                          <h3 className="font-medium">{interview.position}</h3>
-                          <p className="text-sm text-muted-foreground">
-                            {interview.company}
-                          </p>
+                  {interviewHistory.length > 0 ? (
+                    interviewHistory.map((interview) => (
+                      <div
+                        key={interview.mockId}
+                        className="rounded-lg border p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+                        onClick={() =>
+                          router.push(`/interview/${interview.mockId}`)
+                        }
+                      >
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                          <div>
+                            <h3 className="font-medium">
+                              {interview.jobPosition}
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                              Created on {formatDate(interview.createdAt)}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1 bg-muted py-1 px-3 rounded-full text-sm">
+                            <span className="font-medium">
+                              {/* Score would come from user answers */}
+                            </span>
+                            <span className="text-muted-foreground">/100</span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1 bg-muted py-1 px-3 rounded-full text-sm">
-                          <span className="font-medium">{interview.score}</span>
-                          <span className="text-muted-foreground">/100</span>
-                        </div>
-                      </div>
 
-                      <div className="mt-3 flex flex-wrap text-sm text-muted-foreground gap-4">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          <span>{formatDate(interview.date)}</span>
+                        <div className="mt-3 flex flex-wrap text-sm text-muted-foreground gap-4">
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            <span>{formatDate(interview.createdAt)}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            <span>
+                              Experience: {interview.jobExperience} years
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Mic className="h-3 w-3" />
+                            <span>
+                              {JSON.parse(interview.jsonMockResp).length}{" "}
+                              questions
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          <span>{interview.duration}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Mic className="h-3 w-3" />
-                          <span>{interview.questions} questions</span>
-                        </div>
-                      </div>
 
-                      <div className="mt-4 flex justify-end gap-2">
-                        <Button size="sm" variant="outline">
-                          View Feedback
-                        </Button>
-                        <Button size="sm">Retry Interview</Button>
+                        <div className="mt-4 flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(
+                                `/interview/${interview.mockId}/report`
+                              );
+                            }}
+                          >
+                            View Feedback
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/interview/${interview.mockId}`);
+                            }}
+                          >
+                            Continue Interview
+                          </Button>
+                        </div>
                       </div>
+                    ))
+                  ) : (
+                    <div className="text-center p-6">
+                      <p className="text-muted-foreground">
+                        No interview history found. Start your first interview!
+                      </p>
+                      <Button
+                        className="mt-4"
+                        onClick={() => setNewInterviewOpen(true)}
+                      >
+                        <Plus className="h-4 w-4 mr-1" /> New Interview
+                      </Button>
                     </div>
-                  ))}
+                  )}
                 </div>
               </CardContent>
             </Card>

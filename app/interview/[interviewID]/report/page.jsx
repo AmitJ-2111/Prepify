@@ -1,3 +1,5 @@
+// app/interview/[interviewID]/report/page.jsx - Updated with saving report data
+
 "use client";
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -14,8 +16,10 @@ import { useUser } from "@clerk/nextjs";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "utils/db";
 import { eq } from "drizzle-orm";
-import { UserAnswer, MockInterview } from "utils/schema";
-import { chatSession } from "utils/GeminiAIModal"; // Import your Gemini chat session
+import { UserAnswer, MockInterview, ReportData } from "utils/schema";
+import { chatSession } from "utils/GeminiAIModal";
+import moment from "moment";
+import { toast } from "sonner";
 
 function Report() {
   const { interviewID } = useParams();
@@ -29,58 +33,116 @@ function Report() {
     communication: 0,
     technicalKnowledge: 0,
     problemSolving: 0,
+    communicationFeedback: "",
+    technicalKnowledgeFeedback: "",
+    problemSolvingFeedback: "",
   });
   const [mockInterviewQuestions, setMockInterviewQuestions] = useState([]);
+  const [reportSaved, setReportSaved] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
 
-        // Fetch interview data
-        const interviewResults = await db
+        // Check if we already have a report for this interview
+        const existingReports = await db
           .select()
-          .from(MockInterview)
-          .where(eq(MockInterview.mockId, interviewID));
+          .from(ReportData)
+          .where(eq(ReportData.mockIdRef, interviewID));
 
-        if (interviewResults.length === 0) {
-          throw new Error("Interview not found");
-        }
+        if (existingReports.length > 0) {
+          // Report already exists, load it
+          const report = existingReports[0];
+          setInterviewData({
+            mockId: report.mockIdRef,
+            jobPosition: report.jobPosition,
+            createdAt: report.createdAt,
+          });
+          setOverallScore(report.overallScore);
+          setSkillRatings({
+            communication: report.communicationScore,
+            technicalKnowledge: report.technicalKnowledgeScore,
+            problemSolving: report.problemSolvingScore,
+            communicationFeedback: report.reportData
+              ? JSON.parse(report.reportData).communicationFeedback || ""
+              : "",
+            technicalKnowledgeFeedback: report.reportData
+              ? JSON.parse(report.reportData).technicalKnowledgeFeedback || ""
+              : "",
+            problemSolvingFeedback: report.reportData
+              ? JSON.parse(report.reportData).problemSolvingFeedback || ""
+              : "",
+          });
 
-        const interviewData = interviewResults[0];
-        setInterviewData(interviewData);
+          // Still need to fetch user answers and questions
+          const interviewResults = await db
+            .select()
+            .from(MockInterview)
+            .where(eq(MockInterview.mockId, interviewID));
 
-        // Parse the mock questions from the JSON response
-        const parsedMockResp = JSON.parse(interviewData.jsonMockResp);
-        setMockInterviewQuestions(parsedMockResp);
+          if (interviewResults.length > 0) {
+            const parsedMockResp = JSON.parse(interviewResults[0].jsonMockResp);
+            setMockInterviewQuestions(parsedMockResp);
+          }
 
-        // Fetch user answers for this interview
-        const userAnswerResults = await db
-          .select()
-          .from(UserAnswer)
-          .where(eq(UserAnswer.mockIdRef, interviewID));
+          const userAnswerResults = await db
+            .select()
+            .from(UserAnswer)
+            .where(eq(UserAnswer.mockIdRef, interviewID));
 
-        setUserAnswers(userAnswerResults);
+          setUserAnswers(userAnswerResults);
+          setReportSaved(true);
+        } else {
+          // No existing report, fetch and generate everything
+          // Fetch interview data
+          const interviewResults = await db
+            .select()
+            .from(MockInterview)
+            .where(eq(MockInterview.mockId, interviewID));
 
-        // Calculate overall score based on ratings
-        if (userAnswerResults.length > 0) {
-          const totalRating = userAnswerResults.reduce((sum, answer) => {
-            return sum + (parseInt(answer.rating) || 0);
-          }, 0);
+          if (interviewResults.length === 0) {
+            throw new Error("Interview not found");
+          }
 
-          const avgRating = Math.round(totalRating / userAnswerResults.length);
-          setOverallScore(avgRating);
+          const interviewData = interviewResults[0];
+          setInterviewData(interviewData);
 
-          // Use Gemini to analyze skill categories
-          await analyzeSkillCategories(
-            userAnswerResults,
-            interviewData.jobPosition
-          );
+          // Parse the mock questions from the JSON response
+          const parsedMockResp = JSON.parse(interviewData.jsonMockResp);
+          setMockInterviewQuestions(parsedMockResp);
+
+          // Fetch user answers for this interview
+          const userAnswerResults = await db
+            .select()
+            .from(UserAnswer)
+            .where(eq(UserAnswer.mockIdRef, interviewID));
+
+          setUserAnswers(userAnswerResults);
+
+          // Calculate overall score based on ratings
+          if (userAnswerResults.length > 0) {
+            const totalRating = userAnswerResults.reduce((sum, answer) => {
+              return sum + (parseInt(answer.rating) || 0);
+            }, 0);
+
+            const avgRating = Math.round(
+              totalRating / userAnswerResults.length
+            );
+            setOverallScore(avgRating);
+
+            // Use Gemini to analyze skill categories
+            await analyzeSkillCategories(
+              userAnswerResults,
+              interviewData.jobPosition
+            );
+          }
         }
 
         setLoading(false);
       } catch (error) {
         console.error("Error fetching report data:", error);
+        toast.error("Error loading report data");
         setLoading(false);
       }
     };
@@ -149,14 +211,86 @@ function Report() {
         technicalKnowledgeFeedback: analysis.technicalKnowledgeFeedback || "",
         problemSolvingFeedback: analysis.problemSolvingFeedback || "",
       });
+
+      // Save report data to database
+      saveReportToDatabase(analysis);
     } catch (error) {
       console.error("Error analyzing skills with Gemini:", error);
       // Fallback to using overall score for all categories if Gemini analysis fails
-      setSkillRatings({
+      const fallbackSkills = {
         communication: overallScore,
         technicalKnowledge: overallScore,
         problemSolving: overallScore,
+      };
+
+      setSkillRatings({
+        ...fallbackSkills,
+        communicationFeedback: "Based on overall performance assessment",
+        technicalKnowledgeFeedback: "Based on overall performance assessment",
+        problemSolvingFeedback: "Based on overall performance assessment",
       });
+
+      // Still save report with fallback values
+      saveReportToDatabase(fallbackSkills);
+    }
+  };
+
+  // Function to save report data to database
+  const saveReportToDatabase = async (analysis) => {
+    if (!interviewData || reportSaved) return;
+
+    try {
+      // Extract strengths and improvements from user answers
+      const allStrengths = userAnswers
+        .filter((answer) => answer.strengths)
+        .flatMap((answer) => answer.strengths.split(",").map((s) => s.trim()))
+        .filter((value, index, self) => self.indexOf(value) === index) // Remove duplicates
+        .slice(0, 5) // Take top 5
+        .join(", ");
+
+      const allImprovements = userAnswers
+        .filter((answer) => answer.improvements)
+        .flatMap((answer) =>
+          answer.improvements.split(",").map((s) => s.trim())
+        )
+        .filter((value, index, self) => self.indexOf(value) === index) // Remove duplicates
+        .slice(0, 5) // Take top 5
+        .join(", ");
+
+      // Prepare additional data to store as JSON
+      const reportDataJSON = JSON.stringify({
+        communicationFeedback: analysis.communicationFeedback || "",
+        technicalKnowledgeFeedback: analysis.technicalKnowledgeFeedback || "",
+        problemSolvingFeedback: analysis.problemSolvingFeedback || "",
+        answersDetails: userAnswers.map((a) => ({
+          question: a.question,
+          rating: a.rating,
+          feedback: a.feedback,
+        })),
+      });
+
+      // Insert into the ReportData table
+      await db.insert(ReportData).values({
+        mockIdRef: interviewID,
+        userEmail: user?.primaryEmailAddress?.emailAddress,
+        jobPosition: interviewData.jobPosition,
+        createdAt: moment().format("DD-MM-YYYY"),
+        overallScore: overallScore,
+        communicationScore: analysis.communication || overallScore,
+        technicalKnowledgeScore: analysis.technicalKnowledge || overallScore,
+        problemSolvingScore: analysis.problemSolving || overallScore,
+        strengths: allStrengths,
+        improvements: allImprovements,
+        questionCount: mockInterviewQuestions.length,
+        answeredCount: userAnswers.length,
+        reportData: reportDataJSON,
+      });
+
+      setReportSaved(true);
+      toast.success("Report data saved successfully");
+    } catch (error) {
+      console.error("Error saving report data:", error);
+      toast.error("Failed to save report data");
     }
   };
 
@@ -189,7 +323,7 @@ function Report() {
           <div>
             <CardTitle>Interview Report</CardTitle>
             <CardDescription>
-              {interviewData.jobPosition} • {new Date().toLocaleDateString()}
+              {interviewData.jobPosition} • {interviewData.createdAt}
             </CardDescription>
           </div>
           <div className="flex items-center justify-center rounded-full w-16 h-16 bg-slate-50">

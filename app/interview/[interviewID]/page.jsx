@@ -15,20 +15,9 @@ import { eq } from "drizzle-orm";
 import { useParams } from "next/navigation";
 import { db } from "utils/db";
 import { MockInterview } from "utils/schema";
-import {
-  Mic,
-  MicOff,
-  Video,
-  Clock,
-  AlertCircle,
-  ArrowLeft,
-  CheckCircle,
-  ChevronRight,
-  User,
-} from "lucide-react";
+import { Mic, MicOff, Video, Clock, ArrowLeft } from "lucide-react";
 import QuestionsSection from "./_components/QuestionsSection";
 import DynamicRecordAnsSection from "./_components/DynamicRecordAnsSection";
-import Link from "next/link";
 
 function Interview() {
   const params = useParams();
@@ -54,7 +43,7 @@ function Interview() {
   const [allFeedback, setAllFeedback] = useState([]);
   const [summary, setSummary] = useState("");
   const [overallScore, setOverallScore] = useState(0);
-
+  const router = useRouter();
   // Initialize camera and microphone
   useEffect(() => {
     if (interviewState === "instructions") {
@@ -138,7 +127,7 @@ function Interview() {
   // Get Interview Details
   const [interviewData, setInterviewData] = useState();
   const [mockInterviewQuestion, setMockInterviewQuestion] = useState();
-  const [activeQuestionIndex, setActiveQuestionIndex] = useState(2);
+  const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
   useEffect(() => {
     GetInterviewDetails();
   }, []);
@@ -318,69 +307,6 @@ function Interview() {
             mockInterviewQuestion={mockInterviewQuestion}
             activeQuestionIndex={activeQuestionIndex}
           />
-
-          {/* <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>
-                {questions.length > 0
-                  ? questions[currentQuestionIndex].question
-                  : "Loading question..."}
-              </CardTitle>
-              {questions.length > 0 &&
-                questions[currentQuestionIndex].skillTested && (
-                  <CardDescription>
-                    Skill being tested:{" "}
-                    {questions[currentQuestionIndex].skillTested}
-                  </CardDescription>
-                )}
-            </CardHeader>
-          </Card>
-
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="text-base">
-                Your Answer {isRecording && "(recording...)"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="min-h-[200px] max-h-[300px] overflow-y-auto rounded-lg bg-slate-50 p-4">
-                {currentAnswer ? (
-                  <p className="whitespace-pre-wrap">{currentAnswer}</p>
-                ) : (
-                  <p className="text-muted-foreground italic">
-                    {isRecording
-                      ? "Speak now - your answer will appear here..."
-                      : "Click the microphone button to start recording your answer."}
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card> */}
-
-          {/* {questions.length > 0 &&
-            questions[currentQuestionIndex].idealAnswerElements && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">
-                    Key points to consider
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2">
-                    {questions[currentQuestionIndex].idealAnswerElements.map(
-                      (element, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <div className="p-1 bg-blue-100 rounded-full mt-0.5">
-                            <CheckCircle className="h-3 w-3 text-blue-600" />
-                          </div>
-                          <span>{element}</span>
-                        </li>
-                      )
-                    )}
-                  </ul>
-                </CardContent>
-              </Card>
-            )} */}
         </div>
       </div>
       <div className="flex justify-end gap-6 m-5">
@@ -402,7 +328,9 @@ function Interview() {
 
         {activeQuestionIndex === mockInterviewQuestion?.length - 1 && (
           <Button
-            onClick={() => router.push(`/interview/${interviewID}/report`)}
+            onClick={() =>
+              router.push(`/interview/${interviewData?.mockId}/report`)
+            }
           >
             Finish Interview
           </Button>

@@ -1,20 +1,16 @@
+// app/components/app-sidebar.jsx - Complete version
 "use client";
 
 import * as React from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
   BarChart3,
-  BookOpen,
-  Calendar,
   ChevronRight,
-  FileText,
-  Layers,
   LayoutDashboard,
   MessageSquare,
   Settings,
   Video,
-  Code,
-  Users,
+  Layers,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -49,7 +45,7 @@ export function AppSidebar({ className, ...props }) {
     return false;
   };
 
-  // Main app navigation structure
+  // Main app navigation structure - Simplified for version 1
   const mainNavItems = [
     {
       title: "Dashboard",
@@ -65,55 +61,11 @@ export function AppSidebar({ className, ...props }) {
       items: [
         {
           title: "All Interviews",
-          href: "/dashboard",
+          href: "/dashboard?tab=history",
         },
         {
-          title: "Recent Sessions",
-          href: "/dashboard",
-        },
-        {
-          title: "Favorites",
-          href: "/dashboard",
-        },
-      ],
-    },
-    {
-      title: "Resume Builder",
-      href: "#",
-      icon: FileText,
-      isActive: isActivePath("/resume"),
-      items: [
-        {
-          title: "My Resumes",
-          href: "/dashboard",
-        },
-        {
-          title: "Templates",
-          href: "/dashboard",
-        },
-        {
-          title: "AI Writer",
-          href: "/dashboard",
-        },
-      ],
-    },
-    {
-      title: "Practice Library",
-      href: "/practice",
-      icon: BookOpen,
-      isActive: isActivePath("/practice"),
-      items: [
-        {
-          title: "Question Bank",
-          href: "/practice/questions",
-        },
-        {
-          title: "Mock Interviews",
-          href: "/practice/mock",
-        },
-        {
-          title: "Technical Challenges",
-          href: "/practice/technical",
+          title: "New Interview",
+          href: "/dashboard?openNew=true",
         },
       ],
     },
@@ -122,12 +74,6 @@ export function AppSidebar({ className, ...props }) {
       href: "/analytics",
       icon: BarChart3,
       isActive: isActivePath("/analytics"),
-    },
-    {
-      title: "Schedule",
-      href: "/schedule",
-      icon: Calendar,
-      isActive: isActivePath("/schedule"),
     },
     {
       title: "Settings",
@@ -142,14 +88,6 @@ export function AppSidebar({ className, ...props }) {
         {
           title: "Account",
           href: "/settings/account",
-        },
-        {
-          title: "Notifications",
-          href: "/settings/notifications",
-        },
-        {
-          title: "Billing",
-          href: "/settings/billing",
         },
       ],
     },
@@ -220,34 +158,13 @@ export function AppSidebar({ className, ...props }) {
         </SidebarMenu>
       </SidebarGroup>
 
-      {/* Pro features section */}
-      <SidebarGroup>
-        <SidebarGroupLabel>Premium</SidebarGroupLabel>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="lg"
-              variant="outline"
-              className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 hover:from-indigo-500/20 hover:to-purple-500/20"
-            >
-              <div className="h-8 w-8 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center">
-                <Layers className="h-4 w-4 text-white" />
-              </div>
-              <div className="grid flex-1 text-left">
-                <span className="font-semibold">Upgrade to Pro</span>
-                <span className="text-xs">Get unlimited interviews</span>
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarGroup>
-
       {/* Help section at the bottom */}
       <div className="mt-auto p-4">
         <Button
           variant="outline"
           className="w-full justify-start gap-2"
           size="sm"
+          onClick={() => router.push("/help")}
         >
           <MessageSquare className="h-4 w-4" />
           <span>Help & Support</span>
