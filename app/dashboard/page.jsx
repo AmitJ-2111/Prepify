@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sidebar, SidebarContent, SidebarRail } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
-import { InterviewStatsCard } from "./_components/InterviewStatsCard";
+import { InterviewStatsCard } from "./_components/interviewStatsCard";
 import AddNewInterview from "./_components/AddNewInterview";
 import Loading from "@/components/ui/loading";
 import { db } from "utils/db";
